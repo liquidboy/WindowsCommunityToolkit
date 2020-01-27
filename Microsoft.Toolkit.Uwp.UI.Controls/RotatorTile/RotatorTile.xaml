@@ -14,14 +14,22 @@
                                 <StackPanel.RenderTransform>
                                     <TranslateTransform x:Name="Translate" Y="0" />
                                 </StackPanel.RenderTransform>
+                                <StackPanel.Transform3D>
+                                    <CompositeTransform3D x:Name="Composite3DRoot" CenterY="0" CenterZ="0" RotationX="0"/>
+                                </StackPanel.Transform3D>
                                 <ContentPresenter x:Name="Current"
                                                   Content="{Binding}"
                                                   ContentTemplate="{TemplateBinding ItemTemplate}"
-                                                  DataContext="{x:Null}" />
+                                                  DataContext="{x:Null}" >
+                                </ContentPresenter>
                                 <ContentPresenter x:Name="Next"
                                                   Content="{Binding}"
                                                   ContentTemplate="{TemplateBinding ItemTemplate}"
-                                                  DataContext="{x:Null}" />
+                                                  DataContext="{x:Null}" >
+                                    <ContentPresenter.Transform3D>
+                                        <CompositeTransform3D x:Name="Composite3DNext" RotationX="0" TranslateX="0" TranslateZ="0" />
+                                    </ContentPresenter.Transform3D>
+                                </ContentPresenter>
                             </StackPanel>
                         </Canvas>
                         <Border BorderBrush="{TemplateBinding BorderBrush}"

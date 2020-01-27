@@ -11,6 +11,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
+using Windows.UI.Xaml.Media.Media3D;
 
 namespace Microsoft.Toolkit.Uwp.UI.Controls
 {
@@ -22,6 +23,8 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
     [TemplatePart(Name = CurrentPartName, Type = typeof(FrameworkElement))]
     [TemplatePart(Name = NextPartName, Type = typeof(FrameworkElement))]
     [TemplatePart(Name = TranslatePartName, Type = typeof(TranslateTransform))]
+    [TemplatePart(Name = Composite3DRootPartName, Type = typeof(CompositeTransform3D))]
+    [TemplatePart(Name = Composite3DNextPartName, Type = typeof(CompositeTransform3D))]
     [TemplatePart(Name = StackPartName, Type = typeof(StackPanel))]
     public class RotatorTile : Control
     {
@@ -29,6 +32,8 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
         private const string CurrentPartName = "Current";
         private const string NextPartName = "Next";
         private const string TranslatePartName = "Translate";
+        private const string Composite3DRootPartName = "Composite3DRoot";
+        private const string Composite3DNextPartName = "Composite3DNext";
         private const string StackPartName = "Stack";
 
         private static readonly Random Randomizer = new Random();
@@ -38,6 +43,8 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
         private FrameworkElement _nextElement; // FrameworkElement holding a reference to the next element being display
         private FrameworkElement _scroller;  // Container Element that's being translated to animate from one item to the next
         private TranslateTransform _translate; // Translate Transform used when animating the transition
+        private CompositeTransform3D _composite3DRoot;
+        private CompositeTransform3D _composite3DNext;
         private StackPanel _stackPanel; // StackPanel that contains the live tile elements
         private bool _suppressFlipOnSet; // Prevents the SelectedItem change handler to cause a flip
         private WeakEventListener<RotatorTile, object, NotifyCollectionChangedEventArgs> _inccWeakEventListener;
@@ -97,10 +104,13 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
             _currentElement = GetTemplateChild(CurrentPartName) as FrameworkElement;
             _nextElement = GetTemplateChild(NextPartName) as FrameworkElement;
             _translate = GetTemplateChild(TranslatePartName) as TranslateTransform;
+            _composite3DRoot = GetTemplateChild(Composite3DRootPartName) as CompositeTransform3D;
+            _composite3DNext = GetTemplateChild(Composite3DNextPartName) as CompositeTransform3D;
             _stackPanel = GetTemplateChild(StackPartName) as StackPanel;
 
             // set the correct defaults for translate transform
             UpdateTranslateXY();
+            // UpdateComposite3D();
 
             if (_stackPanel != null)
             {
@@ -123,6 +133,8 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
 
         private void RotatorTile_SizeChanged(object sender, SizeChangedEventArgs e)
         {
+            var shouldClipTile = true;
+
             if (_currentElement != null && _nextElement != null)
             {
                 _currentElement.Width = _nextElement.Width = e.NewSize.Width;
@@ -132,7 +144,12 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
             // Set content area to twice the size in the slide direction
             if (_scroller != null)
             {
-                if (Direction == RotateDirection.Up || Direction == RotateDirection.Down)
+                if (Direction == RotateDirection.Down3D)
+                {
+                    shouldClipTile = false;
+                    _scroller.Height = e.NewSize.Height;
+                }
+                else if (Direction == RotateDirection.Up || Direction == RotateDirection.Down)
                 {
                     _scroller.Height = e.NewSize.Height * 2;
                 }
@@ -142,8 +159,13 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
                 }
             }
 
+            UpdateComposite3D();
+
             // Set clip to control
-            Clip = new RectangleGeometry() { Rect = new Rect(default(Point), e.NewSize) };
+            if (shouldClipTile)
+            {
+                Clip = new RectangleGeometry() { Rect = new Rect(default(Point), e.NewSize) };
+            }
         }
 
         private void RotatorTile_Loaded(object sender, RoutedEventArgs e)
@@ -160,6 +182,23 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
             if (_translate != null)
             {
                 _translate.Y = 0;
+            }
+
+            if (_composite3DRoot != null)
+            {
+                _composite3DRoot.CenterY = 0;
+                _composite3DRoot.CenterZ = 0;
+                _composite3DRoot.RotationX = 0;
+            }
+
+            if (_composite3DNext != null)
+            {
+                _composite3DNext.CenterX = 0;
+                _composite3DNext.CenterY = 0;
+                _composite3DNext.CenterZ = 0;
+                _composite3DNext.RotationX = 0;
+                _composite3DNext.TranslateZ = 0;
+                _composite3DNext.TranslateX = 0;
             }
         }
 
@@ -204,45 +243,67 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
             }
 
             var sb = new Storyboard();
-            if (_translate != null)
+            if (Direction == RotateDirection.Down3D)
             {
-                var anim = new DoubleAnimation
+                if (_composite3DRoot != null && _composite3DNext != null)
                 {
-                    Duration = new Duration(TimeSpan.FromMilliseconds(500)),
-                    From = 0
-                };
-                if (Direction == RotateDirection.Up)
-                {
-                    anim.To = -ActualHeight;
+                    var anim = new DoubleAnimationUsingKeyFrames
+                    {
+                        Duration = new Duration(TimeSpan.FromMilliseconds(500))
+                    };
+                    var animkf = new EasingDoubleKeyFrame();
+                    animkf.KeyTime = TimeSpan.FromMilliseconds(500);
+                    animkf.Value = -90;
+                    animkf.EasingFunction = new CircleEase() { EasingMode = EasingMode.EaseIn };
+                    anim.KeyFrames.Add(animkf);
+                    Storyboard.SetTarget(anim, _composite3DRoot);
+                    Storyboard.SetTargetProperty(anim, "RotationX");
+                    sb.Children.Add(anim);
                 }
-                else if (Direction == RotateDirection.Down)
+            }
+            else
+            {
+                if (_translate != null)
                 {
-                    anim.From = -1 * ActualHeight;
-                    anim.To = 0;
-                }
-                else if (Direction == RotateDirection.Right)
-                {
-                    anim.From = -1 * ActualWidth;
-                    anim.To = 0;
-                }
-                else if (Direction == RotateDirection.Left)
-                {
-                    anim.To = -ActualWidth;
-                }
+                    var anim = new DoubleAnimation
+                    {
+                        Duration = new Duration(TimeSpan.FromMilliseconds(500)),
+                        From = 0
+                    };
 
-                anim.FillBehavior = FillBehavior.HoldEnd;
-                anim.EasingFunction = new CubicEase() { EasingMode = EasingMode.EaseOut };
-                Storyboard.SetTarget(anim, _translate);
-                if (Direction == RotateDirection.Up || Direction == RotateDirection.Down)
-                {
-                    Storyboard.SetTargetProperty(anim, "Y");
-                }
-                else
-                {
-                    Storyboard.SetTargetProperty(anim, "X");
-                }
+                    if (Direction == RotateDirection.Up)
+                    {
+                        anim.To = -ActualHeight;
+                    }
+                    else if (Direction == RotateDirection.Down)
+                    {
+                        anim.From = -1 * ActualHeight;
+                        anim.To = 0;
+                    }
+                    else if (Direction == RotateDirection.Right)
+                    {
+                        anim.From = -1 * ActualWidth;
+                        anim.To = 0;
+                    }
+                    else if (Direction == RotateDirection.Left)
+                    {
+                        anim.To = -ActualWidth;
+                    }
 
-                sb.Children.Add(anim);
+                    anim.FillBehavior = FillBehavior.HoldEnd;
+                    anim.EasingFunction = new CubicEase() { EasingMode = EasingMode.EaseOut };
+                    Storyboard.SetTarget(anim, _translate);
+                    if (Direction == RotateDirection.Up || Direction == RotateDirection.Down)
+                    {
+                        Storyboard.SetTargetProperty(anim, "Y");
+                    }
+                    else
+                    {
+                        Storyboard.SetTargetProperty(anim, "X");
+                    }
+
+                    sb.Children.Add(anim);
+                }
             }
 
             sb.Completed += async (a, b) =>
@@ -263,6 +324,8 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
                     UpdateTranslateXY();
                 }
 
+                UpdateComposite3D();
+
                 if (_nextElement != null)
                 {
                     _nextElement.DataContext = GetNext(); // Preload the next tile
@@ -278,7 +341,11 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
                 return;
             }
 
-            if (Direction == RotateDirection.Left || Direction == RotateDirection.Up)
+            if (Direction == RotateDirection.Down3D)
+            {
+                _translate.X = 0;
+            }
+            else if (Direction == RotateDirection.Left || Direction == RotateDirection.Up)
             {
                 _translate.X = _translate.Y = 0;
             }
@@ -289,6 +356,24 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
             else if (Direction == RotateDirection.Down)
             {
                 _translate.Y = -1 * ActualHeight;
+            }
+        }
+
+        private void UpdateComposite3D()
+        {
+            if (_composite3DNext == null || _composite3DRoot == null)
+            {
+                return;
+            }
+
+            if (Direction == RotateDirection.Down3D)
+            {
+                _composite3DRoot.CenterY = ActualHeight / 2;
+                _composite3DRoot.CenterZ = ActualHeight / 2;
+                _composite3DRoot.RotationX = 0;
+                _composite3DNext.RotationX = 90;
+                _composite3DNext.TranslateX = -1 * ActualWidth;
+                _composite3DNext.TranslateZ = ActualHeight;
             }
         }
 
@@ -617,6 +702,9 @@ namespace Microsoft.Toolkit.Uwp.UI.Controls
 
             /// <summary>Right</summary>
             Right,
+
+            /// <summary>Down3D</summary>
+            Down3D,
         }
 
         /// <summary>
